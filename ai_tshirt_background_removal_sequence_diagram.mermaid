@@ -1,0 +1,112 @@
+sequenceDiagram
+    participant User
+    participant UI as UIController
+    participant BRS as BackgroundRemovalService
+    participant IP as ImageProcessor
+    participant BRM as BackgroundRemovalModel
+    participant SM as StorageManager
+    participant CM as ConfigManager
+    participant OAI as OpenAIIntegration
+    participant PS as PrintingService
+    participant FP as FallbackProcessor
+    
+    %% Initialization Phase
+    Note over BRS,CM: System Initialization
+    BRS->>IP: initialize()
+    IP->>BRM: loadModel()
+    BRM-->>IP: model loaded
+    BRS->>UI: initialize(containerSelector)
+    BRS->>SM: initialize()
+    BRS->>CM: initialize()
+    CM-->>BRS: configuration loaded
+    
+    %% OpenAI Image Generation Integration
+    Note over User,OAI: User generates a design via OpenAI
+    User->>OAI: createDesign(prompt)
+    OAI->>+OAI: callOpenAIAPI(prompt)
+    OAI-->>-OAI: imageUrl
+    OAI->>OAI: downloadImage(imageUrl)
+    OAI-->>User: display generated image
+    
+    %% Background Removal Process
+    Note over User,FP: Background Removal Process
+    User->>UI: clickRemoveBackground()
+    UI->>BRS: processImage(imageData)
+    BRS->>CM: getProcessingParams()
+    CM-->>BRS: processingParams
+    
+    %% Check device capability and decide processing strategy
+    BRS->>CM: getDeviceCapabilities()
+    CM-->>BRS: deviceCapabilities
+    
+    alt Device can handle client-side processing
+        BRS->>+IP: removeBackground(imageData, params)
+        IP->>IP: preprocessImage(imageData)
+        IP->>BRM: predict(preprocessedImage, threshold)
+        
+        %% Show progress during processing
+        loop Until processing completes
+            IP->>BRS: updateProgress(progress)
+            BRS->>UI: showProcessingIndicator(true, progress)
+        end
+        
+        BRM-->>IP: maskData
+        IP->>IP: postprocessImage(maskData, originalImage)
+        IP-->>-BRS: processedImageBlob
+    else Use server-side fallback
+        BRS->>+FP: processImage(imageData, params)
+        FP-->>-BRS: processedImageBlob
+    end
+    
+    %% Create processed image result
+    BRS->>BRS: createProcessedImageResult(originalBlob, processedBlob)
+    BRS->>UI: updatePreview(originalImage, processedImage)
+    
+    %% User adjusts processing parameters
+    User->>UI: adjustParameters(newParams)
+    UI->>BRS: adjustProcessingParams(newParams)
+    BRS->>IP: removeBackground(imageData, newParams)
+    
+    %% Processing continues as before with new parameters
+    %% (simplified to avoid repetition)
+    IP-->>BRS: processedImageBlob
+    BRS->>UI: updatePreview(originalImage, processedImage)
+    
+    %% User confirms the result
+    User->>UI: confirmProcessedImage()
+    UI->>BRS: saveProcessedImage()
+    BRS->>SM: saveImage(imageId, originalData, processedData)
+    SM-->>BRS: saveResult
+    
+    %% Preview on T-shirt
+    BRS->>PS: previewOnTshirt(processedImageData, templateId)
+    PS-->>BRS: tshirtPreviewUrl
+    BRS->>UI: showTshirtPreview(tshirtPreviewUrl)
+    UI-->>User: display t-shirt preview
+    
+    %% Proceed to printing process
+    User->>UI: proceedToPrinting()
+    UI->>PS: prepareForPrinting(processedImageData)
+    PS->>PS: applyColorCorrection(processedImageData)
+    PS->>PS: scaleForPrinting(processedImageData, dimensions)
+    PS-->>UI: printReadyImage
+    
+    %% Error handling scenario
+    Note over User,FP: Error Handling
+    alt Processing fails
+        IP-->>BRS: error(details)
+        BRS->>UI: showError(message)
+        UI-->>User: display error message
+        User->>UI: tryAgainWithDifferentSettings()
+        UI->>BRS: processImage(imageData, newParams)
+    end
+    
+    %% Cancellation scenario
+    Note over User,IP: Cancellation
+    User->>UI: cancelProcessing()
+    UI->>BRS: cancelProcessing()
+    BRS->>IP: cancelCurrentTask()
+    IP->>IP: abortProcessing()
+    IP-->>BRS: processingCancelled
+    BRS->>UI: resetProcessingState()
+    UI-->>User: display original image

@@ -1,0 +1,153 @@
+classDiagram
+    class BackgroundRemovalService {
+        -imageProcessor: ImageProcessor
+        -uiController: UIController
+        -storageManager: StorageManager
+        -configManager: ConfigManager
+        +initialize()
+        +processImage(imageData: Blob): Promise~ProcessedImage~
+        +getProcessingStatus(): ProcessingStatus
+        +cancelProcessing()
+        +adjustProcessingParams(params: ProcessingParams): void
+    }
+    
+    class ImageProcessor {
+        -model: BackgroundRemovalModel
+        -worker: WebWorker
+        -processingQueue: Queue~ProcessingTask~
+        -currentTask: ProcessingTask|null
+        -isModelLoaded: boolean
+        +loadModel(): Promise~boolean~
+        +removeBackground(imageData: Blob, params: ProcessingParams): Promise~Blob~
+        +getProgress(): number
+        +cancelCurrentTask(): void
+        -initWebWorker(): void
+        -preprocessImage(imageData: Blob): Promise~ImageData~
+        -postprocessImage(maskData: ImageData, originalImage: ImageData): Promise~Blob~
+    }
+    
+    class BackgroundRemovalModel {
+        -modelPath: string
+        -wasmInstance: object
+        -isLoaded: boolean
+        +load(): Promise~boolean~
+        +predict(imageData: ImageData, threshold: number): Promise~ImageData~
+        +unload(): void
+        +getMemoryUsage(): number
+        -preprocessInput(imageData: ImageData): Float32Array
+        -postprocessOutput(output: Float32Array, width: number, height: number): ImageData
+    }
+    
+    class UIController {
+        -elements: UIElements
+        -eventHandlers: Map~string, Function~
+        -viewState: ViewState
+        +initialize(containerSelector: string): void
+        +updatePreview(originalImage: Blob, processedImage: Blob): void
+        +showProcessingIndicator(visible: boolean, progress: number): void
+        +bindControls(handlers: ControlHandlers): void
+        +updateControlState(controlId: string, state: ControlState): void
+        +showError(message: string): void
+        +getControlValues(): ProcessingParams
+        -renderControls(): void
+        -renderPreviewComparison(beforeImg: string, afterImg: string): void
+    }
+    
+    class StorageManager {
+        -storage: Storage
+        -imageCache: Map~string, CachedImage~
+        +saveImage(imageId: string, originalData: Blob, processedData: Blob): Promise~SaveResult~
+        +getImage(imageId: string): Promise~StoredImage~
+        +listImages(): Promise~Array~StoredImageInfo~~
+        +deleteImage(imageId: string): Promise~boolean~
+        +clearCache(): void
+        -compressImage(imageData: Blob, quality: number): Promise~Blob~
+    }
+    
+    class ConfigManager {
+        -defaultConfig: ProcessingConfig
+        -userConfig: ProcessingConfig
+        -storage: Storage
+        +initialize(): Promise~void~
+        +getProcessingParams(): ProcessingParams
+        +saveUserPreferences(config: Partial~ProcessingConfig~): Promise~void~
+        +resetToDefaults(): void
+        +getDeviceCapabilities(): DeviceCapabilities
+        -determineOptimalSettings(): ProcessingConfig
+    }
+    
+    class ProcessingTask {
+        +id: string
+        +imageData: Blob
+        +params: ProcessingParams
+        +status: TaskStatus
+        +progress: number
+        +result: ProcessedImage|null
+        +error: Error|null
+        +createdAt: Date
+        +startedAt: Date|null
+        +completedAt: Date|null
+    }
+    
+    class ProcessingParams {
+        +threshold: number
+        +featherEdges: boolean
+        +featherRadius: number
+        +foregroundQuality: number
+        +enhanceResult: boolean
+        +format: string
+        +quality: number
+        +maxDimension: number|null
+    }
+    
+    class ProcessedImage {
+        +originalImage: Blob
+        +removedBackgroundImage: Blob
+        +previewUrl: string
+        +width: number
+        +height: number
+        +processingTime: number
+        +params: ProcessingParams
+        +metadata: object
+    }
+    
+    class OpenAIIntegration {
+        -apiClient: OpenAIApiClient
+        +initialize(apiKey: string): void
+        +handleNewGeneratedImage(imageUrl: string): Promise~Blob~
+        +processGeneratedImage(imageData: Blob): Promise~ProcessedImage~
+        -downloadImage(url: string): Promise~Blob~
+    }
+    
+    class PrintingService {
+        -tshirtTemplates: Map~string, TShirtTemplate~
+        +initialize(): void
+        +previewOnTshirt(imageData: Blob, templateId: string): Promise~string~
+        +prepareForPrinting(imageData: Blob): Promise~PrintReadyImage~
+        +getTemplates(): Array~TShirtTemplate~
+        -applyColorCorrection(imageData: Blob): Promise~Blob~
+        -scaleForPrinting(imageData: Blob, dimensions: Dimensions): Promise~Blob~
+    }
+    
+    class FallbackProcessor {
+        -apiKey: string
+        -endpointUrl: string
+        +initialize(config: FallbackConfig): void
+        +processImage(imageData: Blob, params: object): Promise~Blob~
+        +estimateCost(imageSize: number): number
+        -sendRequest(formData: FormData): Promise~Response~
+    }
+    
+    BackgroundRemovalService *-- ImageProcessor
+    BackgroundRemovalService *-- UIController
+    BackgroundRemovalService *-- StorageManager
+    BackgroundRemovalService *-- ConfigManager
+    ImageProcessor *-- BackgroundRemovalModel
+    BackgroundRemovalService ..> ProcessingParams
+    ImageProcessor ..> ProcessingTask
+    ImageProcessor ..> ProcessedImage
+    StorageManager ..> ProcessedImage
+    ConfigManager ..> ProcessingParams
+    OpenAIIntegration --> BackgroundRemovalService
+    BackgroundRemovalService --> PrintingService
+    ImageProcessor --> FallbackProcessor : uses as fallback

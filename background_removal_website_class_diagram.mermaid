@@ -1,0 +1,151 @@
+classDiagram
+    class User {
+        +userId: string
+        +email: string
+        +passwordHash: string
+        +name: string
+        +createdAt: Date
+        +remainingQuota: number
+        +userType: string
+        +register(email, password, name) User
+        +login(email, password) AuthToken
+        +checkQuota() number
+        +decrementQuota() boolean
+        +resetQuota() void
+    }
+
+    class AnonymousUser {
+        +deviceId: string
+        +remainingQuota: number
+        +createdAt: Date
+        +generateDeviceId() string
+        +checkQuota() number
+        +decrementQuota() boolean
+    }
+
+    class AuthService {
+        +generateToken(userId) string
+        +verifyToken(token) boolean
+        +hashPassword(password) string
+        +validatePassword(password, hash) boolean
+        +createSession(userId) Session
+    }
+
+    class ImageProcessor {
+        +processImage(imageData, options) ProcessedImage
+        +validateImage(imageData) boolean
+        +getProcessingStatus(jobId) Status
+        +saveProcessedImage(processedImage) string
+    }
+
+    class QuotaManager {
+        +DEFAULT_FREE_QUOTA: number
+        +checkUserQuota(userId) number
+        +decrementQuota(userId) boolean
+        +resetQuota(userId) void
+        +checkAnonymousQuota(deviceId) number
+        +decrementAnonymousQuota(deviceId) boolean
+    }
+
+    class PaymentService {
+        +createPaymentIntent(amount, currency, userId) PaymentIntent
+        +processPayment(paymentIntentId) PaymentResult
+        +getPaymentStatus(paymentId) Status
+        +calculatePrice(country) PriceInfo
+        +refundPayment(paymentId, reason) RefundResult
+    }
+
+    class AdService {
+        +getAd(userId, region) Advertisement
+        +recordAdStart(userId, adId) void
+        +verifyAdCompletion(userId, adId, watchTimeMs) boolean
+        +getAdStatus(userId, adId) AdStatus
+    }
+
+    class Image {
+        +imageId: string
+        +userId: string
+        +originalUrl: string
+        +processedUrl: string
+        +thumbnailUrl: string
+        +createdAt: Date
+        +status: string
+        +metadata: object
+        +generateThumbnail() string
+        +getDownloadUrl() string
+        +delete() boolean
+    }
+
+    class Transaction {
+        +transactionId: string
+        +userId: string
+        +imageId: string
+        +amount: number
+        +currency: string
+        +paymentMethod: string
+        +status: string
+        +createdAt: Date
+        +completedAt: Date
+        +getTransactionStatus() Status
+        +generateInvoice() Invoice
+    }
+
+    class AdView {
+        +adViewId: string
+        +userId: string
+        +imageId: string
+        +adId: string
+        +startTime: Date
+        +endTime: Date
+        +completed: boolean
+        +recordCompletion() void
+        +validateCompletion() boolean
+        +getReward() void
+    }
+
+    class ApiController {
+        +registerUser(userData) User
+        +loginUser(credentials) AuthToken
+        +uploadImage(image, userId) Image
+        +processImage(imageId, options) ProcessingJob
+        +checkProcessingStatus(jobId) Status
+        +getProcessedImage(imageId) Image
+        +createPayment(imageId, currency) PaymentIntent
+        +getAdForImage(imageId) Advertisement
+        +verifyAdCompletion(adViewId) boolean
+        +downloadImage(imageId) ImageFile
+    }
+
+    class StorageService {
+        +uploadImage(imageData, userId) string
+        +getImageUrl(imageId) string
+        +deleteImage(imageId) boolean
+        +generatePresignedUrl(imageId) string
+    }
+
+    class UserIdentifier {
+        +identifyUser(request) string
+        +generateFingerprint(request) string
+        +setUserIdentifier(response, identifier) void
+        +getUserIdentifier(request) string
+    }
+
+    User "1" -- "*" Image : uploads
+    User "1" -- "*" Transaction : makes
+    User "1" -- "*" AdView : watches
+    AnonymousUser "1" -- "*" Image : uploads
+    AnonymousUser "1" -- "*" AdView : watches
+    ApiController -- ImageProcessor : uses
+    ApiController -- QuotaManager : checks
+    ApiController -- PaymentService : processes
+    ApiController -- AdService : serves
+    ApiController -- StorageService : stores
+    ApiController -- AuthService : authenticates
+    ApiController -- UserIdentifier : identifies
+    ImageProcessor -- StorageService : saves to
+    QuotaManager -- User : manages for
+    QuotaManager -- AnonymousUser : manages for
+    PaymentService -- Transaction : creates
+    AdService -- AdView : tracks
+    Image -- Transaction : associated with
+    Image -- AdView : associated with

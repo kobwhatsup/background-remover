@@ -1,0 +1,162 @@
+sequenceDiagram
+    participant User
+    participant FE as Frontend
+    participant API as ApiController
+    participant Auth as AuthService
+    participant UI as UserIdentifier
+    participant QM as QuotaManager
+    participant IP as ImageProcessor
+    participant SS as StorageService
+    participant PS as PaymentService
+    participant AS as AdService
+    participant DB as Database
+
+    %% User Registration Flow
+    User->>FE: Register with email/password
+    FE->>API: registerUser(userData)
+    API->>Auth: hashPassword(password)
+    Auth-->>API: passwordHash
+    API->>DB: create new User
+    DB-->>API: userId
+    API->>QM: resetQuota(userId)
+    QM->>DB: set remainingQuota = 3
+    DB-->>QM: success
+    QM-->>API: success
+    API-->>FE: User created
+    FE-->>User: Registration successful
+
+    %% Anonymous User Flow
+    User->>FE: Visit website (no login)
+    FE->>API: identifyAnonymousUser()
+    API->>UI: generateFingerprint(request)
+    UI-->>API: deviceId
+    API->>DB: check if AnonymousUser exists
+    alt New anonymous user
+        DB-->>API: not found
+        API->>DB: create AnonymousUser(deviceId)
+        DB-->>API: success
+        API->>QM: resetQuota(deviceId)
+        QM->>DB: set remainingQuota = 3
+    else Returning anonymous user
+        DB-->>API: found AnonymousUser
+    end
+    API-->>FE: Anonymous session created
+    FE-->>User: Ready to use
+
+    %% Image Upload Flow
+    User->>FE: Upload image
+    FE->>API: uploadImage(image, userId/deviceId)
+    API->>SS: uploadImage(imageData, userId/deviceId)
+    SS-->>API: originalUrl
+    API->>DB: create new Image
+    DB-->>API: imageId
+    API-->>FE: Image uploaded
+    FE-->>User: Show upload success
+
+    %% Background Removal Processing Flow
+    User->>FE: Process image
+    FE->>API: processImage(imageId)
+    API->>QM: checkQuota(userId/deviceId)
+    QM->>DB: get remainingQuota
+    DB-->>QM: remainingQuota
+    QM-->>API: remainingQuota
+    
+    alt Has remaining quota
+        API->>QM: decrementQuota(userId/deviceId)
+        QM->>DB: update remainingQuota -= 1
+        DB-->>QM: success
+        QM-->>API: success
+        API->>IP: processImage(imageId)
+        IP->>SS: getImageUrl(imageId)
+        SS-->>IP: originalUrl
+        IP->>IP: remove background
+        IP->>SS: uploadImage(processedImage)
+        SS-->>IP: processedUrl
+        IP-->>API: processedUrl
+        API->>DB: update Image status and processedUrl
+        DB-->>API: success
+        API-->>FE: Processing complete
+        FE->>API: getProcessedImage(imageId)
+        API->>SS: generatePresignedUrl(imageId)
+        SS-->>API: downloadUrl
+        API-->>FE: downloadUrl
+        FE-->>User: Show result and download button
+        User->>FE: Download image
+        FE->>SS: downloadImage(downloadUrl)
+        SS-->>FE: imageFile
+        FE-->>User: Save image file
+    else No remaining quota
+        API-->>FE: Quota exceeded
+        FE-->>User: Show payment/ad options
+        
+        alt User chooses payment
+            User->>FE: Select payment
+            FE->>API: createPayment(imageId, currency)
+            API->>PS: createPaymentIntent(amount, currency, userId/deviceId)
+            PS-->>API: paymentIntentId
+            API-->>FE: paymentDetails
+            FE-->>User: Show payment form
+            User->>FE: Submit payment details
+            FE->>API: processPayment(paymentIntentId)
+            API->>PS: processPayment(paymentIntentId)
+            PS-->>API: paymentResult
+            API->>DB: create Transaction
+            DB-->>API: transactionId
+            API->>IP: processImage(imageId)
+            IP->>SS: getImageUrl(imageId)
+            SS-->>IP: originalUrl
+            IP->>IP: remove background
+            IP->>SS: uploadImage(processedImage)
+            SS-->>IP: processedUrl
+            IP-->>API: processedUrl
+            API->>DB: update Image status and processedUrl
+            DB-->>API: success
+            API-->>FE: Payment successful, processing complete
+            FE->>API: getProcessedImage(imageId)
+            API->>SS: generatePresignedUrl(imageId)
+            SS-->>API: downloadUrl
+            API-->>FE: downloadUrl
+            FE-->>User: Show result and download button
+            User->>FE: Download image
+            FE->>SS: downloadImage(downloadUrl)
+            SS-->>FE: imageFile
+            FE-->>User: Save image file
+        else User chooses advertisement
+            User->>FE: Select watch ad
+            FE->>API: getAdForImage(imageId)
+            API->>AS: getAd(userId/deviceId, region)
+            AS-->>API: advertisement
+            API->>DB: create AdView
+            DB-->>API: adViewId
+            API-->>FE: advertisement, adViewId
+            FE-->>User: Show advertisement
+            FE->>API: recordAdStart(adViewId)
+            API->>AS: recordAdStart(userId/deviceId, adId)
+            AS-->>API: success
+            User->>FE: Watch ad (30s)
+            FE->>API: verifyAdCompletion(adViewId)
+            API->>AS: verifyAdCompletion(userId/deviceId, adId, watchTimeMs)
+            AS-->>API: verified
+            API->>DB: update AdView.completed = true
+            DB-->>API: success
+            API->>IP: processImage(imageId)
+            IP->>SS: getImageUrl(imageId)
+            SS-->>IP: originalUrl
+            IP->>IP: remove background
+            IP->>SS: uploadImage(processedImage)
+            SS-->>IP: processedUrl
+            IP-->>API: processedUrl
+            API->>DB: update Image status and processedUrl
+            DB-->>API: success
+            API-->>FE: Ad complete, processing complete
+            FE->>API: getProcessedImage(imageId)
+            API->>SS: generatePresignedUrl(imageId)
+            SS-->>API: downloadUrl
+            API-->>FE: downloadUrl
+            FE-->>User: Show result and download button
+            User->>FE: Download image
+            FE->>SS: downloadImage(downloadUrl)
+            SS-->>FE: imageFile
+            FE-->>User: Save image file
+        end
+    end
